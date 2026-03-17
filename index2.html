@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>开化香火草龙 - 非遗数字化交互 v10.2</title>
+    <!-- 引入衬线体和书法字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;500;700&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --gold: #d4af37;
+            --bg: #050505;
+            --glass: rgba(20, 20, 20, 0.9);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); overflow: hidden; font-family: 'Noto Serif SC', serif; color: var(--gold); }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        #landing-page {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000000 100%);
+            z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.8s ease, visibility 0.8s;
+        }
+        .landing-title {
+            font-size: 3.5rem; font-weight: 700; letter-spacing: 0.5em;
+            background: linear-gradient(to bottom, #fff 20%, var(--gold) 100%); -webkit-background-clip: text;
+            color: transparent; text-shadow: 0 0 30px rgba(212, 175, 55, 0.3); margin-bottom: 1rem;
+            animation: fadeInUp 1s ease-out;
+        }
+        .landing-subtitle {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 0.9rem; letter-spacing: 0.8em; text-transform: uppercase; color: rgba(255,255,255,0.5);
+            margin-bottom: 4rem; animation: fadeInUp 1s ease-out 0.2s backwards;
+        }
+        .enter-btn {
+            padding: 12px 40px; border: 1px solid var(--gold); background: transparent; color: var(--gold);
+            font-size: 1rem; letter-spacing: 0.3em; cursor: pointer; transition: all 0.4s;
+            animation: fadeInUp 1s ease-out 0.4s backwards;
+        }
+        .enter-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px var(--gold); }
+
+        .exhibit-info {
+            position: absolute; top: 2rem; left: 2rem; z-index: 10; pointer-events: none; opacity: 0; transition: opacity 1s 0.5s;
+        }
+        .exhibit-title { font-size: 1.2rem; font-weight: 700; color: #fff; border-left: 2px solid var(--gold); padding-left: 10px; }
+        .perf-stats { font-family: sans-serif; font-size: 0.7rem; color: #666; margin-top: 5px; padding-left: 12px; }
+
+        .controls-wrapper {
+            position: absolute; top: 2rem; right: 2rem; z-index: 20; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; opacity: 0; transition: opacity 1s 0.5s;
+        }
+        .icon-btn {
+            width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.5); color: var(--gold); display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.3s; backdrop-filter: blur(4px);
+        }
+        .icon-btn:hover, .icon-btn.active { background: var(--gold); color: #000; border-color: var(--gold); }
+        
+        .settings-panel {
+            background: var(--glass); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 8px;
+            width: 280px; display: none; margin-top: 10px; font-family: sans-serif;
+        }
+        .settings-panel.show { display: block; animation: fadeIn 0.3s; }
+        .control-row { margin-bottom: 15px; }
+        .control-row label { display: block; font-size: 0.75rem; color: #aaa; margin-bottom: 5px; }
+        input[type="range"] { width: 100%; accent-color: var(--gold); cursor: pointer; }
+        .upload-btn { width: 100%; padding: 8px; border: 1px dashed #666; color: #888; text-align: center; font-size: 0.8rem; cursor: pointer; display: block; }
+        .upload-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+        .status-hud {
+            position: absolute; bottom: 3rem; left: 50%; transform: translateX(-50%);
+            z-index: 10; text-align: center; pointer-events: none; transition: 0.3s; opacity: 0;
+        }
+        .gesture-hint {
+            display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.7);
+            padding: 8px 20px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        .hint-text { font-family: sans-serif; font-size: 0.9rem; letter-spacing: 0.1em; color: #eee; }
+
+        .camera-pip {
+            position: absolute; bottom: 2rem; right: 2rem; width: 160px; height: 120px;
+            border: 1px solid var(--gold); opacity: 0; transition: 0.5s; pointer-events: none; z-index: 5;
+            background: #000; transform: scaleX(-1);
+        }
+        .camera-pip.active { opacity: 0.8; pointer-events: auto; }
+        .camera-pip canvas { width: 100%; height: 100%; object-fit: cover; }
+
+        .cursor-trail {
+            position: absolute; width: 20px; height: 20px; border: 1px solid var(--gold); border-radius: 50%;
+            pointer-events: none; transform: translate(-50%, -50%); z-index: 30; display: none;
+            box-shadow: 0 0 10px var(--gold); transition: width 0.2s, height 0.2s, border-color 0.2s;
+        }
+        .range-indicator {
+            position: absolute; border: 1px dashed rgba(212,175,55,0.4); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 2; display: none;
+            transition: width 0.1s, height 0.1s;
+        }
+
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        #loading-bar { position: fixed; top: 0; left: 0; height: 2px; background: var(--gold); width: 0%; z-index: 200; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-bar"></div>
+
+    <div id="landing-page">
+        <div class="landing-title">开化香火草龙</div>
+        <div class="landing-subtitle">Intangible Cultural Heritage Digital Art</div>
+        <button class="enter-btn" id="enterBtn">开启体验</button>
+    </div>
+
+    <div class="exhibit-info" id="exhibitInfo">
+        <div class="exhibit-title">开化香火草龙</div>
+        <div class="perf-stats" id="perfStats">FPS: 0 | Particles: 0</div>
+    </div>
+
+    <div class="controls-wrapper" id="controlsWrapper">
+        <div class="icon-btn" id="camBtn" title="开启手势交互">📷</div>
+        <div class="icon-btn" id="setBtn" title="设置">⚙</div>
+        
+        <div class="settings-panel" id="settingsPanel">
+            <div class="control-row">
+                <label>清晰度 / Clarity (越高粒子越密)</label>
+                <input type="range" id="qualitySlider" min="1" max="10" value="8">
+            </div>
+            <div class="control-row">
+                <label>驭风范围 / Wind Radius</label>
+                <input type="range" id="windRadiusSlider" min="50" max="600" value="200">
+            </div>
+            <div class="control-row">
+                <label>自定义设计稿</label>
+                <label for="file-upload" class="upload-btn">选择图片 (自动优化)</label>
+                <input id="file-upload" type="file" accept="image/*" style="display:none"/>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-hud" id="hud">
+        <div class="gesture-hint">
+            <span class="hint-icon" id="hudIcon">✨</span>
+            <span class="hint-text" id="hudText">系统就绪</span>
+        </div>
+    </div>
+
+    <video class="input_video" id="input_video" style="display:none" autoplay playsinline></video>
+    <div class="camera-pip" id="cameraPip">
+        <canvas id="pip_canvas" width="320" height="240"></canvas>
+    </div>
+    
+    <div class="cursor-trail" id="cursor"></div>
+    <div class="range-indicator" id="rangeInd"></div>
+
+    <canvas id="canvas1"></canvas>
+
+    <script>
+        const config = {
+            baseRadius: 6000,   
+            windRadius: 200,    
+            friction: 0.94, 
+            ease: 0.05,     
+            maxParticles: 100000, 
+            gestureSmoothing: 0.15 
+        };
+
+        const state = {
+            cameraActive: false,
+            appStarted: false,
+            interaction: {
+                x: undefined, y: undefined, 
+                currX: undefined, currY: undefined, 
+                mode: 'idle',
+                active: false
+            }
+        };
+
+        const canvas = document.getElementById('canvas1');
+        const ctx = canvas.getContext('2d', { alpha: false }); 
+        const rangeInd = document.getElementById('rangeInd');
+        const cursor = document.getElementById('cursor');
+        const hud = document.getElementById('hud');
+        const hudText = document.getElementById('hudText');
+        const hudIcon = document.getElementById('hudIcon');
+        const perfStats = document.getElementById('perfStats');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let lastTime = 0;
+        let frames = 0;
+        function updatePerf(pCount) {
+            frames++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                perfStats.textContent = `FPS: ${frames} | Particles: ${pCount}`;
+                frames = 0;
+                lastTime = now;
+            }
+        }
+
+        let particlesArray = [];
+        let image = new Image();
+        let textTargets = [];
+
+        function createAbstractDragon() {
+            const tCanvas = document.createElement('canvas');
+            const tCtx = tCanvas.getContext('2d');
+            tCanvas.width = 1000; tCanvas.height = 750;
+            tCtx.fillStyle = '#000'; tCtx.fillRect(0,0,1000,750); 
+            tCtx.lineCap = 'round';
+            tCtx.shadowBlur = 0; 
+            tCtx.strokeStyle = '#d4af37'; tCtx.lineWidth = 30; 
+            tCtx.beginPath(); tCtx.moveTo(200, 500);
+            tCtx.bezierCurveTo(250, 100, 750, 100, 850, 400); tCtx.stroke();
+            tCtx.fillStyle = '#ff3300'; tCtx.beginPath(); tCtx.arc(850, 400, 25, 0, Math.PI*2); tCtx.fill();
+            return tCanvas.toDataURL();
+        }
+        image.src = createAbstractDragon();
+
+        class Particle {
+            constructor(effect, x, y, color, isLight, size) {
+                this.effect = effect;
+                this.originX = x; 
+                this.originY = y;
+                this.x = Math.random() * this.effect.width;
+                this.y = Math.random() * this.effect.height;
+                this.color = color;
+                this.isLight = isLight;
+                this.size = size;
+                this.vx = 0; 
+                this.vy = 0;
+                this.ignited = 0;
+                this.textTarget = null;
+                this.speedVar = Math.random() * 0.05 + 0.02; 
+            }
+
+            draw() {
+                if (state.interaction.mode === 'fist') {
+                    if (!this.textTarget) return;
+
+                    // 【核心修改】：金焰色核心
+                    ctx.fillStyle = '#ffd700'; // 金色核心
+                    ctx.fillRect(this.x, this.y, this.size, this.size);
+                    
+                    ctx.fillStyle = this.textTarget.color;
+                    
+                } else if (this.ignited > 0.01) {
+                    let fillStyle;
+                    if (this.ignited > 0.4) {
+                        const burn = (this.ignited - 0.4) / 0.6; 
+                        const r = 255;
+                        const g = Math.floor(100 + burn * 155); 
+                        const b = Math.floor(burn * 100);       
+                        fillStyle = `rgba(${r}, ${g}, ${b}, ${this.ignited})`;
+                        ctx.fillStyle = fillStyle;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.size * 1.5, 0, Math.PI*2);
+                        ctx.fill();
+                    } else {
+                        const smokeRise = (0.4 - this.ignited) * 50; 
+                        const alpha = this.ignited * 2.5;
+                        ctx.fillStyle = `rgba(150, 150, 150, ${alpha})`;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - smokeRise, this.size * 2, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.size, this.size);
+                }
+            }
+
+            update(time) {
+                if (this.ignited > 0) this.ignited -= 0.015;
+
+                let targetX = this.originX;
+                let targetY = this.originY;
+                
+                let moveEase = config.ease; 
+
+                if (state.interaction.mode === 'fist') {
+                    if (this.textTarget) {
+                        targetX = this.textTarget.x;
+                        targetY = this.textTarget.y;
+                        this.ignited = Math.max(this.ignited, 1.0); 
+                        moveEase = this.speedVar;
+                    } else {
+                        return; 
+                    }
+                }
+
+                if (state.interaction.active && state.interaction.currX !== undefined) {
+                    const dx = state.interaction.currX - this.x;
+                    const dy = state.interaction.currY - this.y;
+                    const distSq = dx * dx + dy * dy;
+                    const dist = Math.sqrt(distSq);
+
+                    if (state.interaction.mode === 'palm' && dist < config.windRadius) {
+                        const force = (config.windRadius - dist) / config.windRadius;
+                        const angle = Math.atan2(dy, dx);
+                        this.vx -= Math.cos(angle) * force * 2;
+                        this.vy -= Math.sin(angle) * force * 2;
+                        this.vx += Math.sin(angle) * force * 2;
+                        this.vy -= Math.cos(angle) * force * 2;
+                    } 
+                    else if (state.interaction.mode === 'pinch' && dist < 60) {
+                        if (dist < 40) this.ignited = 1.0;
+                        const force = (60 - dist) / 60;
+                        this.vx += (dx / dist) * force * 1.5;
+                        this.vy += (dy / dist) * force * 1.5;
+                    }
+                    else if (state.interaction.mode === 'idle' && dist < 100) {
+                        const force = -1000 / (distSq + 1);
+                        this.vx += (dx / dist) * force * 5;
+                        this.vy += (dy / dist) * force * 5;
+                    }
+                }
+
+                this.vx *= config.friction;
+                this.vy *= config.friction;
+                
+                this.x += this.vx + (targetX - this.x) * moveEase;
+                this.y += this.vy + (targetY - this.y) * moveEase;
+            }
+        }
+
+        class Effect {
+            constructor(width, height) {
+                this.width = width; this.height = height;
+                this.particlesArray = [];
+                this.image = image;
+            }
+
+            initText() {
+                const tCanvas = document.createElement('canvas');
+                const tCtx = tCanvas.getContext('2d');
+                tCanvas.width = this.width;
+                tCanvas.height = this.height;
+                
+                const baseSize = Math.min(this.width / 6, 200); 
+                tCtx.textAlign = 'center';
+                tCtx.textBaseline = 'middle';
+                
+                // 【核心修正】：增加 Letter Spacing，大幅拉开间距
+                tCtx.letterSpacing = `${baseSize * 0.25}px`; // 每个字之间增加空隙
+
+                // 【色彩修正】：高饱和金黄火焰色
+                const gradient = tCtx.createLinearGradient(0, this.height * 0.2, 0, this.height * 0.8);
+                gradient.addColorStop(0, '#ffff00');   
+                gradient.addColorStop(0.3, '#ffcc00'); 
+                gradient.addColorStop(0.6, '#ff8c00'); 
+                gradient.addColorStop(1, '#ff4500');   
+                tCtx.fillStyle = gradient;
+
+                const cx = this.width / 2;
+                const cy = this.height / 2;
+                const offsetY = -baseSize * 0.1;
+
+                // --- 【舒展排版】：大幅拉开XY距离，互不干扰 ---
+                // 1. 香火 (左上)
+                tCtx.save();
+                tCtx.translate(cx - baseSize * 1.3, cy - baseSize * 0.7 + offsetY);
+                tCtx.rotate(-0.02); 
+                tCtx.font = `${baseSize * 1.1}px "Ma Shan Zheng", cursive`;
+                tCtx.fillText('香火', 0, 0);
+                tCtx.restore();
+
+                // 2. 长盛 (右上)
+                tCtx.save();
+                tCtx.translate(cx + baseSize * 1.3, cy - baseSize * 0.7 + offsetY);
+                tCtx.rotate(0.02);
+                tCtx.font = `${baseSize * 0.9}px "Ma Shan Zheng", cursive`;
+                tCtx.fillText('长盛', 0, 0);
+                tCtx.restore();
+
+                // 3. 薪火 (左下)
+                tCtx.save();
+                tCtx.translate(cx - baseSize * 1.3, cy + baseSize * 0.7 + offsetY);
+                tCtx.rotate(0.02);
+                tCtx.font = `${baseSize * 0.9}px "Ma Shan Zheng", cursive`;
+                tCtx.fillText('薪火', 0, 0);
+                tCtx.restore();
+
+                // 4. 相传 (右下)
+                tCtx.save();
+                tCtx.translate(cx + baseSize * 1.3, cy + baseSize * 0.7 + offsetY);
+                tCtx.rotate(-0.02);
+                tCtx.font = `${baseSize * 1.1}px "Ma Shan Zheng", cursive`;
+                tCtx.fillText('相传', 0, 0);
+                tCtx.restore();
+                
+                const pixels = tCtx.getImageData(0, 0, this.width, this.height).data;
+                textTargets = [];
+                
+                const gap = 3; 
+                for (let y = 0; y < this.height; y += gap) {
+                    for (let x = 0; x < this.width; x += gap) {
+                        const index = (y * this.width + x) * 4;
+                        if (pixels[index + 3] > 100) {
+                            const r = pixels[index];
+                            const g = pixels[index + 1];
+                            const b = pixels[index + 2];
+                            const color = `rgb(${r},${g},${b})`;
+                            textTargets.push({x: x, y: y, color: color});
+                        }
+                    }
+                }
+                
+                textTargets.sort(() => Math.random() - 0.5);
+                
+                for (let i = 0; i < this.particlesArray.length; i++) {
+                    if (i < textTargets.length) {
+                        this.particlesArray[i].textTarget = textTargets[i];
+                    } else {
+                        this.particlesArray[i].textTarget = null;
+                    }
+                }
+            }
+
+            init() {
+                if (this.width <= 0) return;
+                
+                const quality = parseInt(document.getElementById('qualitySlider').value);
+                const baseSize = 500 + (quality - 1) * 80; 
+                
+                const imgAspect = this.image.width / this.image.height;
+                const processWidth = baseSize; 
+                const processHeight = processWidth / imgAspect;
+                
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = processWidth;
+                offCanvas.height = processHeight;
+                const offCtx = offCanvas.getContext('2d');
+                offCtx.imageSmoothingEnabled = true; 
+                offCtx.drawImage(this.image, 0, 0, processWidth, processHeight);
+                const pixels = offCtx.getImageData(0, 0, processWidth, processHeight).data;
+
+                this.particlesArray = [];
+                
+                const screenAspect = this.width / this.height;
+                let displayScale = 1;
+                if (screenAspect > imgAspect) {
+                    displayScale = (this.height * 0.85) / processHeight;
+                } else {
+                    displayScale = (this.width * 0.85) / processWidth;
+                }
+
+                const offX = (this.width - processWidth * displayScale) / 2;
+                const offY = (this.height - processHeight * displayScale) / 2;
+                
+                const sampleGap = 2; 
+
+                for (let y = 0; y < processHeight; y += sampleGap) {
+                    for (let x = 0; x < processWidth; x += sampleGap) {
+                        const i = (y * processWidth + x) * 4;
+                        if (pixels[i+3] > 30) {
+                            const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+                            const bright = (r+g+b)/3;
+                            if (bright > 10) { 
+                                const color = `rgb(${r},${g},${b})`;
+                                const isLight = (r > 180 && g < 150) || bright > 220;
+                                const finalX = offX + x * displayScale;
+                                const finalY = offY + y * displayScale;
+                                const size = (sampleGap * displayScale) * 1.1; 
+                                
+                                this.particlesArray.push(new Particle(this, finalX, finalY, color, isLight, size));
+                            }
+                        }
+                    }
+                }
+                
+                this.initText();
+            }
+            
+            update(time) { for(let p of this.particlesArray) p.update(time); }
+            draw() { for(let p of this.particlesArray) p.draw(); }
+        }
+
+        let effect = new Effect(canvas.width, canvas.height);
+        let startTime = Date.now();
+
+        function animate() {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = 'rgba(5,5,5,1)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (state.interaction.mode === 'fist') {
+                ctx.globalCompositeOperation = 'lighter';
+            }
+            
+            const time = Date.now() - startTime;
+
+            effect.draw();
+            effect.update(time);
+            updatePerf(effect.particlesArray.length);
+            
+            if (state.interaction.x !== undefined) {
+                if (state.interaction.currX === undefined) {
+                    state.interaction.currX = state.interaction.x;
+                    state.interaction.currY = state.interaction.y;
+                } else {
+                    const k = config.gestureSmoothing;
+                    state.interaction.currX += (state.interaction.x - state.interaction.currX) * k;
+                    state.interaction.currY += (state.interaction.y - state.interaction.currY) * k;
+                }
+            }
+
+            if (state.interaction.active && state.interaction.currX) {
+                const px = state.interaction.currX + 'px';
+                const py = state.interaction.currY + 'px';
+                
+                cursor.style.transform = `translate(-50%, -50%) translate(${state.interaction.currX}px, ${state.interaction.currY}px)`;
+                cursor.style.left = px; cursor.style.top = py;
+                
+                if (state.interaction.mode === 'palm') {
+                    rangeInd.style.left = px; 
+                    rangeInd.style.top = py;
+                    rangeInd.style.width = (config.windRadius * 2) + 'px';
+                    rangeInd.style.height = (config.windRadius * 2) + 'px';
+                    rangeInd.style.display = 'block';
+                } else {
+                    rangeInd.style.display = 'none';
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function startApp() {
+            if(state.appStarted) return;
+            state.appStarted = true;
+            effect.init();
+            animate();
+        }
+
+        const fontLoadPromise = document.fonts.load('1rem "Ma Shan Zheng"');
+        
+        Promise.any([
+            fontLoadPromise,
+            new Promise(resolve => setTimeout(resolve, 2000))
+        ]).then(() => {
+            if(image.complete) {
+                startApp();
+            } else {
+                image.onload = startApp;
+            }
+        });
+
+        function dist(p1, p2) {
+            return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
+
+        function onResults(results) {
+            const pipCanvas = document.getElementById('pip_canvas');
+            const pipCtx = pipCanvas.getContext('2d');
+            
+            pipCtx.save();
+            pipCtx.clearRect(0, 0, pipCanvas.width, pipCanvas.height);
+            pipCtx.drawImage(results.image, 0, 0, pipCanvas.width, pipCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                drawConnectors(pipCtx, lm, HAND_CONNECTIONS, {color: '#00ff41', lineWidth: 2});
+                drawLandmarks(pipCtx, lm, {color: '#fff', lineWidth: 1, radius: 2});
+
+                const point = lm[8];
+                const targetX = (1 - point.x) * canvas.width;
+                const targetY = point.y * canvas.height;
+
+                const pinchD = dist(lm[4], lm[8]);
+                
+                const tips = [8, 12, 16, 20];
+                let avgTipDist = 0;
+                tips.forEach(i => avgTipDist += dist(lm[i], lm[0]));
+                avgTipDist /= 4;
+
+                const isOpen = avgTipDist > 0.35; 
+
+                let newMode = 'point';
+                let newText = "👆 引导 (Point)";
+                let newIcon = "👆";
+
+                if (pinchD < 0.06) {
+                    newMode = 'pinch';
+                    newText = "🔥 点火 (Pinch)";
+                    newIcon = "🔥";
+                } else if (avgTipDist < 0.25) { 
+                    newMode = 'fist';
+                    newText = "✊ 薪火相传 (Reform)";
+                    newIcon = "📜";
+                } else if (isOpen) {
+                    newMode = 'palm';
+                    newText = "✋ 驭风 (Palm)";
+                    newIcon = "✋";
+                }
+
+                // 核心：检测到进入 Fist 模式的瞬间，重置开始时间
+                if (newMode === 'fist' && state.interaction.mode !== 'fist') {
+                    state.fistStartTime = Date.now();
+                }
+
+                state.interaction.x = targetX;
+                state.interaction.y = targetY;
+                state.interaction.mode = newMode;
+                state.interaction.active = true;
+
+                hudText.textContent = newText;
+                hudIcon.textContent = newIcon;
+                hud.style.opacity = 1;
+                cursor.style.display = 'block';
+
+                if (newMode === 'palm') {
+                    rangeInd.style.width = (config.windRadius * 2) + 'px';
+                    rangeInd.style.height = (config.windRadius * 2) + 'px';
+                }
+
+                if (newMode === 'pinch') {
+                    cursor.style.width = '10px'; cursor.style.height = '10px';
+                    cursor.style.background = '#ff4500'; cursor.style.boxShadow = '0 0 15px #ff4500';
+                } else if (newMode === 'fist') {
+                    cursor.style.width = '40px'; cursor.style.height = '40px';
+                    cursor.style.background = 'rgba(212, 175, 55, 0.3)'; cursor.style.boxShadow = '0 0 30px #d4af37'; 
+                } else {
+                    cursor.style.width = '20px'; cursor.style.height = '20px';
+                    cursor.style.background = 'transparent'; cursor.style.boxShadow = '0 0 10px var(--gold)';
+                }
+
+            } else {
+                state.interaction.active = false;
+                hud.style.opacity = 0;
+                cursor.style.display = 'none';
+                rangeInd.style.display = 'none';
+                state.interaction.currX = undefined;
+            }
+            pipCtx.restore();
+        }
+
+        document.getElementById('camBtn').addEventListener('click', async function() {
+            if(state.cameraActive) return;
+            const btn = this;
+            btn.style.opacity = '0.5';
+            hudText.textContent = "正在请求摄像头权限...";
+            hud.style.opacity = 1;
+            document.getElementById('loading-bar').style.width = '30%';
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("浏览器不支持摄像头访问");
+                }
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 320, height: 240, facingMode: 'user' } 
+                });
+                stream.getTracks().forEach(track => track.stop());
+
+                hudText.textContent = "启动视觉模型...";
+                document.getElementById('loading-bar').style.width = '60%';
+
+                const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                hands.setOptions({ maxNumHands: 1, modelComplexity: 0, 
+                                   minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                hands.onResults(onResults);
+
+                const videoElement = document.getElementById('input_video');
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => { await hands.send({image: videoElement}); },
+                    width: 320, height: 240 
+                });
+                await camera.start();
+                
+                state.cameraActive = true;
+                document.getElementById('loading-bar').style.width = '100%';
+                setTimeout(() => document.getElementById('loading-bar').style.width = '0%', 500);
+                document.getElementById('cameraPip').classList.add('active');
+                btn.classList.add('active');
+                btn.style.opacity = '1';
+                hudText.textContent = "识别成功！";
+
+            } catch (err) {
+                console.error(err);
+                hudText.textContent = "无法开启摄像头: " + (err.message || "未知错误");
+                btn.style.opacity = '1';
+                document.getElementById('loading-bar').style.width = '0%';
+                alert("摄像头启动失败。\n请检查浏览器权限设置，或确认设备摄像头未被占用。");
+            }
+        });
+
+        document.getElementById('enterBtn').addEventListener('click', () => {
+            document.getElementById('landing-page').style.opacity = 0;
+            setTimeout(() => document.getElementById('landing-page').style.visibility = 'hidden', 800);
+            document.getElementById('exhibitInfo').style.opacity = 1;
+            document.getElementById('controlsWrapper').style.opacity = 1;
+            hud.style.opacity = 1;
+        });
+
+        document.getElementById('setBtn').addEventListener('click', function() {
+            this.classList.toggle('active');
+            document.getElementById('settingsPanel').classList.toggle('show');
+        });
+
+        document.getElementById('qualitySlider').addEventListener('change', () => effect.init());
+        
+        document.getElementById('windRadiusSlider').addEventListener('input', (e) => {
+            config.windRadius = parseInt(e.target.value);
+            rangeInd.style.width = (config.windRadius * 2) + 'px';
+            rangeInd.style.height = (config.windRadius * 2) + 'px';
+        });
+
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const img = new Image();
+                img.onload = () => {
+                    image = img;
+                    effect.image = img; 
+                    effect.init();
+                    setTimeout(() => effect.init(), 100); 
+                };
+                img.src = evt.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            effect.init();
+        });
+
+        window.addEventListener('mousemove', e => {
+            if(!state.cameraActive) {
+                state.interaction.x = e.clientX;
+                state.interaction.y = e.clientY;
+                state.interaction.active = true;
+                
+                let currentMode = state.interaction.mode;
+                let newMode = 'idle';
+
+                if(e.buttons === 1) {
+                    newMode = 'pinch';
+                    hudText.textContent = "🔥 鼠标按住 (Pinch)";
+                } else if(e.buttons === 2) {
+                    newMode = 'fist';
+                    hudText.textContent = "📜 鼠标右键 (Reform)";
+                } else if(e.shiftKey) { 
+                    newMode = 'palm';
+                    hudText.textContent = "✋ 鼠标驭风 (Shift)";
+                    rangeInd.style.display = 'block';
+                    rangeInd.style.width = (config.windRadius * 2) + 'px';
+                    rangeInd.style.height = (config.windRadius * 2) + 'px';
+                } else {
+                    newMode = 'idle';
+                    hudText.textContent = "👆 鼠标引导";
+                    rangeInd.style.display = 'none';
+                }
+
+                if (newMode === 'fist' && currentMode !== 'fist') {
+                    state.fistStartTime = Date.now();
+                }
+                state.interaction.mode = newMode;
+
+                hud.style.opacity = 1;
+                cursor.style.display = 'block';
+            }
+        });
+        window.addEventListener('contextmenu', e => e.preventDefault()); 
+        window.addEventListener('mouseup', () => { if(!state.cameraActive) state.interaction.mode = 'idle'; });
+
+    </script>
+</body>
+</html>
